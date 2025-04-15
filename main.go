@@ -23,10 +23,13 @@ type Config struct {
 }
 
 type Response struct {
-	Generated float64 `json:"generated"`
-	Consumed  float64 `json:"consumed"`
-	Exported  float64 `json:"exported"`
-	Error     string  `json:"error,omitempty"`
+	Generated  float64 `json:"generated"`
+	Consumed   float64 `json:"consumed"`
+	Exported   float64 `json:"exported"`
+	Imported   float64 `json:"imported"`
+	Discharged float64 `json:"discharged"`
+	MaxPv      float64 `json:"maxPv"`
+	Error      string  `json:"error,omitempty"`
 }
 
 func loadConfig() (*Config, error) {
@@ -178,6 +181,38 @@ func queryExported(client influxdb2.Client, config *Config, timeframe string) (f
 	return queryMeasurement(client, config, "lux_Etogrid_day", start)
 }
 
+func queryDischarged(client influxdb2.Client, config *Config, timeframe string) (float64, error) {
+	start, err := calculateRangeStart(timeframe)
+	if err != nil {
+		return 0, err
+	}
+
+	return queryMeasurement(client, config, "lux_Edischg_day", start)
+}
+
+func queryImported(client influxdb2.Client, config *Config, timeframe string) (float64, error) {
+	start, err := calculateRangeStart(timeframe)
+	if err != nil {
+		return 0, err
+	}
+
+	return queryMeasurement(client, config, "lux_Etouser_day", start)
+}
+
+func queryMaxPv(client influxdb2.Client, config *Config, timeframe string) (float64, error) {
+	start, err := calculateRangeStart(timeframe)
+	if err != nil {
+		return 0, err
+	}
+
+	watts, err := queryMeasurement(client, config, "lux_Pall", start)
+	if err != nil {
+		return 0, err
+	}
+
+	return watts / 1000, nil
+}
+
 func handleSolarShowdown(client influxdb2.Client, config *Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -211,10 +246,34 @@ func handleSolarShowdown(client influxdb2.Client, config *Config) http.HandlerFu
 			return
 		}
 
+		imported, err := queryImported(client, config, timeframe)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(Response{Error: err.Error()})
+			return
+		}
+
+		discharged, err := queryDischarged(client, config, timeframe)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(Response{Error: err.Error()})
+			return
+		}
+
+		maxPv, err := queryMaxPv(client, config, timeframe)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(Response{Error: err.Error()})
+			return
+		}
+
 		response := Response{
-			Generated: generated,
-			Consumed:  consumed,
-			Exported:  exported,
+			Generated:  generated,
+			Consumed:   consumed,
+			Exported:   exported,
+			Imported:   imported,
+			Discharged: discharged,
+			MaxPv:      maxPv,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
