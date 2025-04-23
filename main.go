@@ -144,32 +144,12 @@ func queryConsumed(client influxdb2.Client, config *Config, timeframe string) (f
 		return 0, err
 	}
 
-	generated, err := queryGenerated(client, config, timeframe)
+	watts, err := queryMeasurement(client, config, "lux_DailyConsumption", start)
 	if err != nil {
 		return 0, err
 	}
 
-	touser, err := queryMeasurement(client, config, "lux_Etouser_day", start)
-	if err != nil {
-		return 0, err
-	}
-
-	dischg, err := queryMeasurement(client, config, "lux_Edischg_day", start)
-	if err != nil {
-		return 0, err
-	}
-
-	togrid, err := queryMeasurement(client, config, "lux_Etogrid_day", start)
-	if err != nil {
-		return 0, err
-	}
-
-	chg, err := queryMeasurement(client, config, "lux_Echg_day", start)
-	if err != nil {
-		return 0, err
-	}
-
-	return generated + touser + dischg - (togrid + chg), nil
+	return watts / 1000, nil
 }
 
 func queryExported(client influxdb2.Client, config *Config, timeframe string) (float64, error) {
